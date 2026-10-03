@@ -70,6 +70,9 @@ public enum AppFlags
 	/// Doesn't log Foster's header (version number, gpu, SDL version, etc)
 	/// </summary>
 	NoHeaderLog = 1 << 2,
+
+	/// <summary>Shows the window without activating it, for background CLI debugging.</summary>
+	NoWindowFocus = 1 << 3,
 }
 
 /// <summary>
@@ -229,6 +232,8 @@ public abstract class App : IDisposable
 		// by default allow controller presses while unfocused,
 		// let game decide if it should handle them
 		SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+		if (config.Flags.Has(AppFlags.NoWindowFocus))
+			SDL_SetHint(SDL_HINT_WINDOW_ACTIVATE_WHEN_SHOWN, "0");
 
 		// initialize SDL3
 		{
@@ -464,8 +469,8 @@ public abstract class App : IDisposable
 			if (SDL_GetWindowRelativeMouseMode(Window.Handle) && Window.Focused)
 				SDL_WarpMouseInWindow(Window.Handle, Window.Width / 2, Window.Height / 2);
 
-			PollEvents();
 			inputProvider.Update(Time);
+			PollEvents();
 			FramePool.NextFrame();
 
 			while (mainThreadQueue.TryDequeue(out var action))
