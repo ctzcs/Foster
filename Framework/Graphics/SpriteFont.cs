@@ -411,8 +411,8 @@ public class SpriteFont : IDisposable
 			if (!ch.Visible)
 				continue;
 
-			// blit and add to packer
-			tasks.Add(Task.Run(() =>
+			// Browser hosts cannot block while waiting for worker tasks.
+			void Rasterize()
 			{
 				// make sure our image buffer is big enough
 				var buffer = buffers.Value;
@@ -438,11 +438,16 @@ public class SpriteFont : IDisposable
 				// append to packer
 				lock(packer)
 					packer.Add(codepoint, string.Empty, new RectInt(0, 0, ch.Width, ch.Height), ch.Width, buffer);
-			}));
+			}
+			if (OperatingSystem.IsBrowser())
+				Rasterize();
+			else
+				tasks.Add(Task.Run(Rasterize));
 		}
 
 		// wait on all blitting
-		Task.WaitAll([..tasks]);
+		if (!OperatingSystem.IsBrowser())
+			Task.WaitAll([..tasks]);
 		buffers.Dispose();
 
 		// get packed textures

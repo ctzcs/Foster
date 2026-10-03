@@ -14,6 +14,9 @@ Inspect customizations with `git diff upstream/main...MyFoster -- Framework` and
 - `AppFlags.NoWindowFocus` requests a window that does not activate when shown.
 - Update transient input state before polling each frame's SDL events. Startup
   keeps the upstream order of polling once before initializing input state.
+- Rasterize SpriteFont glyphs synchronously in browsers, which cannot block on
+  worker tasks. Desktop keeps the upstream parallel path and its alpha/pixel
+  settings. This preserves DragonLib's existing browser font behavior.
 
 ## 3D rendering extensions
 
