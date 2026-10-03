@@ -20,6 +20,7 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 		public int Width;
 		public int Height;
 		public SDL_GPUTextureFormat Format;
+		public uint MipLevels;
 		public SDL_GPUSampleCount SampleCount;
 
 		/// <summary>
@@ -587,7 +588,7 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 			width = (uint)width,
 			height = (uint)height,
 			layer_count_or_depth = 1,
-			num_levels = 1,
+			num_levels = flags.Has(TextureFlags.GenerateMipmaps) ? (uint)Texture.CalculateMipLevelCount(width, height) : 1,
 			sample_count = GetSampleCount(sampleCount),
 			props = props
 		};
@@ -607,6 +608,9 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 		}
 
 		// compute flags
+		// SDL generates mipmaps through color blits, requiring color target usage.
+		if (flags.Has(TextureFlags.GenerateMipmaps))
+			info.usage |= SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 		if (flags.Has(TextureFlags.ComputeRead))
 			info.usage |= SDL_GPUTextureUsageFlags.SDL_GPU_TEXTUREUSAGE_COMPUTE_STORAGE_READ;
 		if (flags.Has(TextureFlags.ComputeWrite))
@@ -634,6 +638,7 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 			Width = width,
 			Height = height,
 			Format = info.format,
+			MipLevels = info.num_levels,
 			SampleCount = GetSampleCount(sampleCount),
 			MultiSampleResolve = resolveTexture
 		};
@@ -749,6 +754,13 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 		}
 
 		// transfer buffer management
+		// Mipmap generation must run outside a pass, after uploads in the same command buffer.
+		if (res.MipLevels > 1)
+		{
+			EndCopyPass();
+			SDL_GenerateMipmapsForGPUTexture(cmdUpload, res.Texture);
+		}
+
 		if (usingTemporaryTransferBuffer)
 			SDL_ReleaseGPUTransferBuffer(device, transferBuffer);
 		else
@@ -1777,6 +1789,7 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 			hash,
 			command.BlendMode
 		);
+		hash = HashCode.Combine(hash, command.Topology);
 
 		if (command.StencilTestEnabled)
 			hash = HashCode.Combine(
@@ -1881,7 +1894,12 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 					vertex_attributes = vertexAttributes,
 					num_vertex_attributes = (uint)vertexAttributeCount
 				},
-				primitive_type = SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+				primitive_type = command.Topology switch
+				{
+					PrimitiveTopology.Triangles => SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+					PrimitiveTopology.Lines => SDL_GPUPrimitiveType.SDL_GPU_PRIMITIVETYPE_LINELIST,
+					_ => throw new NotSupportedException($"Unsupported primitive topology: {command.Topology}")
+				},
 				rasterizer_state = new()
 				{
 					fill_mode = command.FillMode switch
@@ -2064,6 +2082,8 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 			{
 				min_filter = GetFilter(sampler.Filter),
 				mag_filter = GetFilter(sampler.Filter),
+				mipmap_mode = SDL_GPUSamplerMipmapMode.SDL_GPU_SAMPLERMIPMAPMODE_LINEAR,
+				max_lod = sampler.Mipmaps ? 1000f : 0f,
 				address_mode_u = GetWrapMode(sampler.WrapX),
 				address_mode_v = GetWrapMode(sampler.WrapY),
 				address_mode_w = SDL_GPUSamplerAddressMode.SDL_GPU_SAMPLERADDRESSMODE_REPEAT,
@@ -2114,6 +2134,8 @@ internal unsafe class GraphicsDeviceSDL(App app, GraphicsDriver preferred) : Gra
 	private static SDL_GPUTextureFormat GetTextureFormat(TextureFormat format) => format switch
 	{
 		TextureFormat.R8G8B8A8 => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+		TextureFormat.R8G8B8A8Srgb => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
+		TextureFormat.R16G16B16A16Float => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,
 		TextureFormat.R8 => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8_UNORM,
 		TextureFormat.R8G8 => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_R8G8_UNORM,
 		TextureFormat.Depth24Stencil8 => SDL_GPUTextureFormat.SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,

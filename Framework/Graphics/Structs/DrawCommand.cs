@@ -97,6 +97,8 @@ public struct DrawCommand
 	/// The Render State Culling Mode
 	/// </summary>
 	public CullMode CullMode = CullMode.None;
+	/// <summary>The primitive topology. Existing draws default to a triangle list.</summary>
+	public PrimitiveTopology Topology = PrimitiveTopology.Triangles;
 
 	/// <summary>
 	/// The Depth Comparison Function, only used if DepthTestEnabled is true

@@ -17,4 +17,7 @@ public enum TextureFlags
 	/// Allows the Texture to be used during Compute Storage Writes
 	/// </summary>
 	ComputeWrite = 1 << 1,
+
+	/// <summary>Generates a full mip chain after uploading a sampled color texture.</summary>
+	GenerateMipmaps = 1 << 2,
 }

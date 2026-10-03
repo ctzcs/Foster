@@ -43,6 +43,18 @@ public class Texture : IGraphicResource
 	/// </summary>
 	public readonly TextureFormat Format;
 
+	/// <summary>The flags used when creating this texture.</summary>
+	public readonly TextureFlags Flags;
+	/// <summary>The number of mip levels, including the base level.</summary>
+	public int MipLevelCount => Flags.HasFlag(TextureFlags.GenerateMipmaps) ? CalculateMipLevelCount(Width, Height) : 1;
+	/// <summary>Calculates the length of a complete mip chain.</summary>
+	public static int CalculateMipLevelCount(int width, int height)
+	{
+		ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+		ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+		return 1 + System.Numerics.BitOperations.Log2((uint)Math.Max(width, height));
+	}
+
 	/// <summary>
 	/// The Texture Sample Count. This is always <see cref="SampleCount.One"/> unless created as a <see cref="Target"/> attachment.
 	/// </summary>
@@ -56,7 +68,22 @@ public class Texture : IGraphicResource
 	/// <summary>
 	/// The Memory Size of the Texture, in bytes
 	/// </summary>
-	public int MemorySize => Width * Height * Format.Size();
+	public int MemorySize
+	{
+		get
+		{
+			var width = Width;
+			var height = Height;
+			var bytes = 0;
+			for (var level = 0; level < MipLevelCount; level++)
+			{
+				bytes = checked(bytes + width * height * Format.Size());
+				width = Math.Max(1, width / 2);
+				height = Math.Max(1, height / 2);
+			}
+			return bytes;
+		}
+	}
 
 	internal readonly GraphicsDevice.ResourceHandle Resource;
 
@@ -84,11 +111,15 @@ public class Texture : IGraphicResource
 		if (width <= 0 || height <= 0)
 			throw new Exception("Texture must have a size larger than 0");
 
+		if (flags.HasFlag(TextureFlags.GenerateMipmaps) &&
+			(format.IsDepthStencilFormat() || sampleCount != SampleCount.One || targetBinding != null))
+			throw new NotSupportedException("Mipmaps require a sampled, non-multisampled color texture.");
 		Resource = graphicsDevice.CreateTexture(name, width, height, format, flags, sampleCount, targetBinding?.Resource);
 		Name = name ?? string.Empty;
 		Width = width;
 		Height = height;
 		Format = format;
+		Flags = flags;
 		SampleCount = sampleCount;
 		IsTargetAttachment = targetBinding != null;
 	}
